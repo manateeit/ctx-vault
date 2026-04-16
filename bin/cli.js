@@ -499,29 +499,52 @@ async function update() {
   let configPath = null
   let config = null
 
-  // Search for .ctx-vault.json in common locations
-  const searchPaths = [
-    path.join(cwd, '.ctx-vault.json'),
-    path.join(cwd, 'vault', '.ctx-vault.json'),
-  ]
-  // Also check any directories in cwd for the config
-  try {
-    const dirs = fs.readdirSync(cwd, { withFileTypes: true }).filter(d => d.isDirectory())
-    for (const d of dirs) {
-      searchPaths.push(path.join(cwd, d.name, '.ctx-vault.json'))
-    }
-  } catch {}
+  // Search for .ctx-vault.json — recursively up to 2 levels deep
+  function findConfig(dir, depth) {
+    if (depth > 2) return null
+    const direct = path.join(dir, '.ctx-vault.json')
+    if (fs.existsSync(direct)) return direct
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true })
+      for (const entry of entries) {
+        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+          const found = findConfig(path.join(dir, entry.name), depth + 1)
+          if (found) return found
+        }
+      }
+    } catch {}
+    return null
+  }
+  configPath = findConfig(cwd, 0)
+  if (configPath) config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
 
-  for (const p of searchPaths) {
-    if (fs.existsSync(p)) {
-      configPath = p
-      config = JSON.parse(fs.readFileSync(p, 'utf8'))
-      break
+  // Fallback: detect existing install by looking for vault dirs without config
+  if (!config) {
+    const candidates = ['vault', 'bods-vault', 'docs/vault', 'knowledge', 'wiki']
+    for (const c of candidates) {
+      const candidatePath = path.join(cwd, c)
+      if (fs.existsSync(path.join(candidatePath, 'sessions')) ||
+          fs.existsSync(path.join(candidatePath, 'wiki'))) {
+        console.log(`${YELLOW}Found vault at ${candidatePath} but no .ctx-vault.json config.${RESET}`)
+        console.log(`${BOLD}Migrating to current version...${RESET}\n`)
+        configPath = path.join(candidatePath, '.ctx-vault.json')
+        config = {
+          vault_path: candidatePath,
+          vault_sessions_path: path.join(candidatePath, 'sessions'),
+          commands_path: path.join(cwd, '.claude', 'commands', 'ctx'),
+          created: new Date().toISOString(),
+          version: '1.0.0',
+        }
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2))
+        console.log(`  ${GREEN}+${RESET} Created config: ${configPath}`)
+        break
+      }
     }
   }
 
   if (!config) {
-    console.log(`${YELLOW}No .ctx-vault.json found. Run 'ctx-vault install' first.${RESET}`)
+    console.log(`${YELLOW}No .ctx-vault.json or vault directory found.${RESET}`)
+    console.log(`${YELLOW}Run 'ctx-vault install' first to set up the vault.${RESET}`)
     return
   }
 
