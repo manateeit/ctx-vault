@@ -1,6 +1,6 @@
 {
   "name": "@manateeit/ctx-vault",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Session context vault for Claude Code — preserve and resume conversations across context resets",
   "bin": {
     "ctx-vault": "./bin/cli.js"
@@ -22,6 +22,7 @@
   "files": [
     "bin/",
     "commands/",
+    "hooks/",
     "README.md"
   ]
 }

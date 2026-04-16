@@ -320,7 +320,50 @@ This project has a knowledge vault at \`${path.relative(cwd, vaultPath) || vault
     console.log(`  ${GREEN}+${RESET} Created CLAUDE.md with vault section`)
   }
 
-  // Step 4: Summary
+  // Step 4: Install PreCompact hook
+  console.log(`${BOLD}Step 4: PreCompact Hook${RESET}\n`)
+
+  const hookSrc = path.join(__dirname, '..', 'hooks', 'pre-compact-save.sh')
+  const hookDir = path.join(cwd, '.claude', 'hooks')
+  const hookDst = path.join(hookDir, 'ctx-vault-pre-compact.sh')
+
+  fs.mkdirSync(hookDir, { recursive: true })
+  fs.copyFileSync(hookSrc, hookDst)
+  fs.chmodSync(hookDst, 0o755)
+  console.log(`  ${GREEN}+${RESET} .claude/hooks/ctx-vault-pre-compact.sh`)
+
+  // Add hook to settings.json (project-local)
+  const settingsDir = path.join(cwd, '.claude')
+  const settingsPath = path.join(settingsDir, 'settings.local.json')
+  let settings = {}
+  if (fs.existsSync(settingsPath)) {
+    try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) } catch {}
+  }
+
+  if (!settings.hooks) settings.hooks = {}
+  if (!settings.hooks.PreCompact) settings.hooks.PreCompact = []
+
+  // Check if already registered
+  const alreadyRegistered = settings.hooks.PreCompact.some(h =>
+    h.hooks && h.hooks.some(hh => hh.command && hh.command.includes('ctx-vault-pre-compact'))
+  )
+
+  if (!alreadyRegistered) {
+    settings.hooks.PreCompact.push({
+      hooks: [{
+        type: 'command',
+        command: hookDst,
+        timeout: 30,
+        statusMessage: 'Backing up session before compaction...'
+      }]
+    })
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
+    console.log(`  ${GREEN}+${RESET} PreCompact hook registered in .claude/settings.local.json`)
+  } else {
+    console.log(`  ${DIM}skip${RESET} PreCompact hook (already registered)`)
+  }
+
+  // Step 5: Summary
   console.log(`
 ${BLUE}${BOLD}════════════════════════════════════════${RESET}
 ${GREEN}${BOLD}  Installation complete!${RESET}
@@ -483,7 +526,42 @@ This project has a knowledge vault at \`${path.relative(cwd, vaultPath) || vault
     console.log(`  ${GREEN}+${RESET} Created project CLAUDE.md with wiki section`)
   }
 
-  // 6. Update config version
+  // 6. Update PreCompact hook
+  const hookSrc = path.join(__dirname, '..', 'hooks', 'pre-compact-save.sh')
+  const hookDir = path.join(cwd, '.claude', 'hooks')
+  const hookDst = path.join(hookDir, 'ctx-vault-pre-compact.sh')
+
+  fs.mkdirSync(hookDir, { recursive: true })
+  fs.copyFileSync(hookSrc, hookDst)
+  fs.chmodSync(hookDst, 0o755)
+  console.log(`  ${GREEN}updated${RESET} .claude/hooks/ctx-vault-pre-compact.sh`)
+
+  // Ensure hook is registered
+  const settingsPath = path.join(cwd, '.claude', 'settings.local.json')
+  let settings = {}
+  if (fs.existsSync(settingsPath)) {
+    try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) } catch {}
+  }
+  if (!settings.hooks) settings.hooks = {}
+  if (!settings.hooks.PreCompact) settings.hooks.PreCompact = []
+
+  const alreadyRegistered = settings.hooks.PreCompact.some(h =>
+    h.hooks && h.hooks.some(hh => hh.command && hh.command.includes('ctx-vault-pre-compact'))
+  )
+  if (!alreadyRegistered) {
+    settings.hooks.PreCompact.push({
+      hooks: [{
+        type: 'command',
+        command: hookDst,
+        timeout: 30,
+        statusMessage: 'Backing up session before compaction...'
+      }]
+    })
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
+    console.log(`  ${GREEN}+${RESET} PreCompact hook registered`)
+  }
+
+  // 7. Update config version
   config.version = '1.0.1'
   config.updated = new Date().toISOString()
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2))
