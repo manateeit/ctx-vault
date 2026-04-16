@@ -1,0 +1,27 @@
+{
+  "name": "ctx-vault",
+  "version": "1.0.0",
+  "description": "Session context vault for Claude Code — preserve and resume conversations across context resets",
+  "bin": {
+    "ctx-vault": "./bin/cli.js"
+  },
+  "keywords": [
+    "claude-code",
+    "context",
+    "session",
+    "vault",
+    "ai",
+    "cli"
+  ],
+  "author": "Propelis Group",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/propelis-mit/ctx-vault"
+  },
+  "files": [
+    "bin/",
+    "commands/",
+    "README.md"
+  ]
+}
