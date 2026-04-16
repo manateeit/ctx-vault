@@ -1,5 +1,5 @@
 {
-  "name": "ctx-vault",
+  "name": "@manateeit/ctx-vault",
   "version": "1.0.0",
   "description": "Session context vault for Claude Code — preserve and resume conversations across context resets",
   "bin": {
