@@ -359,6 +359,140 @@ ${BLUE}${BOLD}══════════════════════
   rl.close()
 }
 
+async function update() {
+  const cwd = process.cwd()
+  const home = process.env.HOME || process.env.USERPROFILE
+
+  banner()
+  console.log(`${BOLD}Updating ctx-vault...${RESET}\n`)
+
+  // Find existing config
+  let configPath = null
+  let config = null
+
+  // Search for .ctx-vault.json in common locations
+  const searchPaths = [
+    path.join(cwd, '.ctx-vault.json'),
+    path.join(cwd, 'vault', '.ctx-vault.json'),
+  ]
+  // Also check any directories in cwd for the config
+  try {
+    const dirs = fs.readdirSync(cwd, { withFileTypes: true }).filter(d => d.isDirectory())
+    for (const d of dirs) {
+      searchPaths.push(path.join(cwd, d.name, '.ctx-vault.json'))
+    }
+  } catch {}
+
+  for (const p of searchPaths) {
+    if (fs.existsSync(p)) {
+      configPath = p
+      config = JSON.parse(fs.readFileSync(p, 'utf8'))
+      break
+    }
+  }
+
+  if (!config) {
+    console.log(`${YELLOW}No .ctx-vault.json found. Run 'ctx-vault install' first.${RESET}`)
+    return
+  }
+
+  const vaultPath = config.vault_path
+  const sessionsPath = config.vault_sessions_path
+  const today = new Date().toISOString().split('T')[0]
+
+  console.log(`  Vault: ${vaultPath}`)
+  console.log(`  Config: ${configPath}\n`)
+
+  // 1. Update command files
+  const commandsTarget = config.commands_path || path.join(cwd, '.claude', 'commands', 'ctx')
+  fs.mkdirSync(commandsTarget, { recursive: true })
+
+  const commandFiles = fs.readdirSync(COMMANDS_SRC).filter(f => f.endsWith('.md'))
+  for (const file of commandFiles) {
+    let content = fs.readFileSync(path.join(COMMANDS_SRC, file), 'utf8')
+    content = content.replace(/\{\{VAULT_SESSIONS_PATH\}\}/g, sessionsPath)
+    content = content.replace(/\{\{VAULT_PATH\}\}/g, vaultPath)
+    content = content.replace(/\{\{VAULT_CONFIG_PATH\}\}/g, configPath)
+    fs.writeFileSync(path.join(commandsTarget, file), content)
+    console.log(`  ${GREEN}updated${RESET} /ctx:${file.replace('.md', '')}`)
+  }
+
+  // 2. Ensure vault CLAUDE.md exists
+  const vaultClaudeMd = path.join(vaultPath, 'CLAUDE.md')
+  if (!fs.existsSync(vaultClaudeMd)) {
+    fs.writeFileSync(vaultClaudeMd, VAULT_CLAUDE_MD)
+    console.log(`  ${GREEN}+${RESET} ${path.relative(cwd, vaultClaudeMd)}`)
+  } else {
+    console.log(`  ${DIM}skip${RESET} vault CLAUDE.md (exists)`)
+  }
+
+  // 3. Ensure vault index.md and log.md exist
+  const vaultIndex = path.join(vaultPath, 'index.md')
+  if (!fs.existsSync(vaultIndex)) {
+    fs.writeFileSync(vaultIndex, VAULT_INDEX_MD.replace(/\{\{DATE\}\}/g, today))
+    console.log(`  ${GREEN}+${RESET} vault index.md`)
+  }
+  const vaultLog = path.join(vaultPath, 'log.md')
+  if (!fs.existsSync(vaultLog)) {
+    fs.writeFileSync(vaultLog, VAULT_LOG_MD.replace(/\{\{DATE\}\}/g, today))
+    console.log(`  ${GREEN}+${RESET} vault log.md`)
+  }
+
+  // 4. Ensure vault directories exist
+  for (const dir of ['raw', 'raw/assets', 'wiki', 'sessions']) {
+    fs.mkdirSync(path.join(vaultPath, dir), { recursive: true })
+  }
+
+  // 5. Inject CLAUDE.md wiki section into project root if missing
+  const claudeMdPath = path.join(cwd, 'CLAUDE.md')
+  const vaultSection = `
+## LLM Wiki Vault (ctx-vault)
+
+This project has a knowledge vault at \`${path.relative(cwd, vaultPath) || vaultPath}\`.
+
+**Pattern:** [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — the LLM incrementally builds and maintains a persistent wiki of interlinked markdown files.
+
+**Three layers:**
+- \`${path.relative(cwd, vaultPath)}/raw/\` — Immutable source documents. Read but never modify.
+- \`${path.relative(cwd, vaultPath)}/wiki/\` — LLM-maintained knowledge pages. You own this layer — create, update, cross-reference.
+- \`${path.relative(cwd, vaultPath)}/sessions/\` — Preserved conversation sessions via ctx-vault.
+
+**Operations:**
+- **Ingest:** When a source is added to raw/, read it, write/update wiki pages, update index.md, append to log.md.
+- **Query:** Answer questions by reading index.md to find relevant wiki pages, then synthesize. File good answers back into wiki/.
+- **Lint:** Periodically health-check for contradictions, stale claims, orphan pages, missing cross-references.
+- **Session save:** Run \`/ctx:save\` before context resets. Run \`/ctx:recap\` in new sessions to restore.
+
+**Key files:**
+- \`${path.relative(cwd, vaultPath)}/CLAUDE.md\` — Full vault schema and conventions
+- \`${path.relative(cwd, vaultPath)}/index.md\` — Content catalog (read this first for queries)
+- \`${path.relative(cwd, vaultPath)}/log.md\` — Chronological activity log
+- \`${path.relative(cwd, vaultPath)}/sessions/INDEX.md\` — Session archive
+`
+
+  if (fs.existsSync(claudeMdPath)) {
+    const existing = fs.readFileSync(claudeMdPath, 'utf8')
+    if (existing.includes('ctx-vault')) {
+      console.log(`  ${DIM}skip${RESET} project CLAUDE.md (already has ctx-vault section)`)
+    } else {
+      fs.appendFileSync(claudeMdPath, '\n' + vaultSection)
+      console.log(`  ${GREEN}+${RESET} Appended wiki section to project CLAUDE.md`)
+    }
+  } else {
+    fs.writeFileSync(claudeMdPath, `# Project Configuration\n${vaultSection}`)
+    console.log(`  ${GREEN}+${RESET} Created project CLAUDE.md with wiki section`)
+  }
+
+  // 6. Update config version
+  config.version = '1.0.1'
+  config.updated = new Date().toISOString()
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2))
+
+  console.log(`
+${GREEN}${BOLD}Update complete.${RESET} Commands refreshed, vault structure verified, CLAUDE.md checked.
+`)
+}
+
 async function uninstall() {
   const cwd = process.cwd()
   const home = process.env.HOME || process.env.USERPROFILE
@@ -390,6 +524,10 @@ switch (command) {
   case 'setup':
     install(args.includes('--global') ? 'global' : 'local').catch(console.error)
     break
+  case 'update':
+  case 'upgrade':
+    update().catch(console.error)
+    break
   case 'uninstall':
   case 'remove':
     uninstall().catch(console.error)
@@ -401,6 +539,7 @@ switch (command) {
 
   Commands:
     install     Set up vault + install commands (default)
+    update      Update commands, vault structure, and CLAUDE.md
     uninstall   Remove ctx-vault commands
 
   Options:
@@ -411,6 +550,7 @@ switch (command) {
     1. Ask if you have an existing Obsidian vault or create a new one
     2. Scaffold the LLM Wiki pattern (raw/, wiki/, sessions/)
     3. Install /ctx:save, /ctx:recap, /ctx:setup commands
+    4. Inject wiki instructions into project CLAUDE.md
 `)
     break
   default:
