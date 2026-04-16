@@ -278,7 +278,49 @@ async function install(scope) {
     console.log(`  ${GREEN}+${RESET} /ctx:${file.replace('.md', '')}`)
   }
 
-  // Step 3: Summary
+  // Step 3: Inject vault reference into project CLAUDE.md
+  console.log(`\n${BOLD}Step 3: Project CLAUDE.md${RESET}\n`)
+
+  const claudeMdPath = path.join(cwd, 'CLAUDE.md')
+  const vaultSection = `
+## LLM Wiki Vault (ctx-vault)
+
+This project has a knowledge vault at \`${path.relative(cwd, vaultPath) || vaultPath}\`.
+
+**Pattern:** [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — the LLM incrementally builds and maintains a persistent wiki of interlinked markdown files.
+
+**Three layers:**
+- \`${path.relative(cwd, vaultPath)}/raw/\` — Immutable source documents. Read but never modify.
+- \`${path.relative(cwd, vaultPath)}/wiki/\` — LLM-maintained knowledge pages. You own this layer — create, update, cross-reference.
+- \`${path.relative(cwd, vaultPath)}/sessions/\` — Preserved conversation sessions via ctx-vault.
+
+**Operations:**
+- **Ingest:** When a source is added to raw/, read it, write/update wiki pages, update index.md, append to log.md.
+- **Query:** Answer questions by reading index.md to find relevant wiki pages, then synthesize. File good answers back into wiki/.
+- **Lint:** Periodically health-check for contradictions, stale claims, orphan pages, missing cross-references.
+- **Session save:** Run \`/ctx:save\` before context resets. Run \`/ctx:recap\` in new sessions to restore.
+
+**Key files:**
+- \`${path.relative(cwd, vaultPath)}/CLAUDE.md\` — Full vault schema and conventions
+- \`${path.relative(cwd, vaultPath)}/index.md\` — Content catalog (read this first for queries)
+- \`${path.relative(cwd, vaultPath)}/log.md\` — Chronological activity log
+- \`${path.relative(cwd, vaultPath)}/sessions/INDEX.md\` — Session archive
+`
+
+  if (fs.existsSync(claudeMdPath)) {
+    const existing = fs.readFileSync(claudeMdPath, 'utf8')
+    if (existing.includes('ctx-vault')) {
+      console.log(`  ${DIM}skip${RESET} CLAUDE.md (already has ctx-vault section)`)
+    } else {
+      fs.appendFileSync(claudeMdPath, '\n' + vaultSection)
+      console.log(`  ${GREEN}+${RESET} Appended vault section to CLAUDE.md`)
+    }
+  } else {
+    fs.writeFileSync(claudeMdPath, `# Project Configuration\n${vaultSection}`)
+    console.log(`  ${GREEN}+${RESET} Created CLAUDE.md with vault section`)
+  }
+
+  // Step 4: Summary
   console.log(`
 ${BLUE}${BOLD}════════════════════════════════════════${RESET}
 ${GREEN}${BOLD}  Installation complete!${RESET}
