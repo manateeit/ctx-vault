@@ -363,7 +363,87 @@ This project has a knowledge vault at \`${path.relative(cwd, vaultPath) || vault
     console.log(`  ${DIM}skip${RESET} PreCompact hook (already registered)`)
   }
 
-  // Step 5: Summary
+  // Step 5: Install graphify
+  console.log(`\n${BOLD}Step 5: Graphify (Knowledge Graph)${RESET}\n`)
+
+  const { execSync } = require('child_process')
+
+  // Check if graphify is installed
+  let graphifyInstalled = false
+  try {
+    execSync('python3 -c "import graphify"', { stdio: 'pipe' })
+    graphifyInstalled = true
+    console.log(`  ${GREEN}found${RESET} graphify already installed`)
+  } catch {
+    try {
+      execSync('python3 -m pip install graphifyy -q', { stdio: 'pipe', timeout: 60000 })
+      graphifyInstalled = true
+      console.log(`  ${GREEN}+${RESET} installed graphifyy via pip`)
+    } catch {
+      try {
+        execSync('python3 -m pip install graphifyy -q --break-system-packages', { stdio: 'pipe', timeout: 60000 })
+        graphifyInstalled = true
+        console.log(`  ${GREEN}+${RESET} installed graphifyy via pip (break-system-packages)`)
+      } catch {
+        console.log(`  ${YELLOW}skip${RESET} graphify install failed — install manually: pip install graphifyy`)
+      }
+    }
+  }
+
+  // Create graphify-out directory in vault
+  const graphifyOut = path.join(vaultPath, 'graphify-out')
+  fs.mkdirSync(graphifyOut, { recursive: true })
+
+  // Copy graphify skill if available
+  const graphifySkillSrc = path.join(__dirname, '..', 'skills', 'graphify.md')
+  if (fs.existsSync(graphifySkillSrc)) {
+    const skillsDir = path.join(cwd, '.claude', 'commands')
+    fs.mkdirSync(skillsDir, { recursive: true })
+    fs.copyFileSync(graphifySkillSrc, path.join(skillsDir, 'graphify.md'))
+    console.log(`  ${GREEN}+${RESET} /graphify command installed`)
+  }
+
+  // Add graphify section to vault CLAUDE.md
+  const vaultClaudeMdPath = path.join(vaultPath, 'CLAUDE.md')
+  if (fs.existsSync(vaultClaudeMdPath)) {
+    const vaultClaudeMd = fs.readFileSync(vaultClaudeMdPath, 'utf8')
+    if (!vaultClaudeMd.includes('graphify')) {
+      const graphifySection = `
+## Graphify (Knowledge Graph)
+
+This vault uses [graphify](https://github.com/ChristopherKahler/graphify) to build knowledge graphs from sources.
+
+**Build graph from vault sources:**
+\`\`\`
+/graphify ${path.relative(cwd, vaultPath)}/raw --obsidian --obsidian-dir ${path.relative(cwd, vaultPath)}
+\`\`\`
+
+**Incremental update (new/changed files only):**
+\`\`\`
+/graphify ${path.relative(cwd, vaultPath)}/raw --update --obsidian --obsidian-dir ${path.relative(cwd, vaultPath)}
+\`\`\`
+
+**Query the graph:**
+\`\`\`
+/graphify query "your question here"
+\`\`\`
+
+**Output:** \`graphify-out/\` contains graph.json, graph.html (interactive), and GRAPH_REPORT.md.
+
+Every edge is tagged EXTRACTED, INFERRED, or AMBIGUOUS — you always know what was found vs invented.
+`
+      fs.appendFileSync(vaultClaudeMdPath, graphifySection)
+      console.log(`  ${GREEN}+${RESET} Graphify section added to vault CLAUDE.md`)
+    } else {
+      console.log(`  ${DIM}skip${RESET} vault CLAUDE.md (already has graphify section)`)
+    }
+  }
+
+  if (graphifyInstalled) {
+    console.log(`  ${DIM}Run '/graphify ${path.relative(cwd, vaultPath)}/raw' to build your first graph${RESET}`)
+  }
+
+  // Step 6: Summary
   console.log(`
 ${BLUE}${BOLD}════════════════════════════════════════${RESET}
 ${GREEN}${BOLD}  Installation complete!${RESET}
@@ -374,17 +454,22 @@ ${BLUE}${BOLD}══════════════════════
     ${DIM}Open in Obsidian to browse wiki + sessions${RESET}
 
   ${BOLD}Structure:${RESET}
-    raw/          Immutable source documents
-    wiki/         LLM-maintained knowledge pages
-    sessions/     Preserved conversation sessions
-    CLAUDE.md     Vault schema (LLM Wiki pattern)
-    index.md      Content catalog
-    log.md        Activity log
+    raw/            Immutable source documents
+    wiki/           LLM-maintained knowledge pages
+    sessions/       Preserved conversation sessions
+    graphify-out/   Knowledge graph (JSON, HTML, report)
+    CLAUDE.md       Vault schema (LLM Wiki pattern)
+    index.md        Content catalog
+    log.md          Activity log
 
   ${BOLD}Commands:${RESET}
-    /ctx:save     Save session context to vault
-    /ctx:recap    Resume from a previous session
-    /ctx:setup    Reconfigure vault location
+    /ctx:save       Save session context to vault
+    /ctx:recap      Resume from a previous session
+    /ctx:setup      Reconfigure vault location
+    /graphify       Build knowledge graph from sources
+
+  ${BOLD}Hooks:${RESET}
+    PreCompact      Auto-backs up transcript before compaction
 
   ${BOLD}Workflow:${RESET}
     1. Context getting full  ${DIM}→${RESET}  ${BOLD}/ctx:save${RESET}
@@ -394,6 +479,7 @@ ${BLUE}${BOLD}══════════════════════
   ${BOLD}LLM Wiki operations:${RESET}
     ${DIM}Drop sources into raw/, tell the LLM to ingest.${RESET}
     ${DIM}Ask questions — answers get filed into wiki/.${RESET}
+    ${DIM}Run /graphify to build knowledge graph from sources.${RESET}
     ${DIM}Periodic /lint to health-check the wiki.${RESET}
 
 ${BLUE}${BOLD}════════════════════════════════════════${RESET}
